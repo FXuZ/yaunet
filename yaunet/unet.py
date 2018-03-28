@@ -83,7 +83,8 @@ def get_image_data(path, csv_file):
     img = {}
     for iid in os.listdir(path):
         img_path = os.path.join(os.path.join(path, iid), 'images')
-        img[iid] = {'image': io.imread(os.path.join(img_path, iid) + '.png', as_grey=True)}
+        img[iid] = {IMG_KEY: io.imread(os.path.join(img_path, iid) + '.png', as_grey=True)}
+        img[iid]['shape'] = img[iid][IMG_KEY].shape
 
     def run_length_decode(base, enc):
         shape = base.shape
@@ -115,8 +116,9 @@ def import_dataset(data_dict):
     key, img_data = zip(*data_dict.items())
     feature = np.stack([img['image'] for img in img_data])
     label = np.stack([img['mask'] for img in img_data])
-    for i in range(feature.shape[0]):
-        yield feature[i: i+1], label[i: i+1]
+    while True:
+        for i in range(feature.shape[0]):
+            yield feature[i: i+1], label[i: i+1]
     # return tf.data.Dataset.from_tensor_slices((feature, label))
 
 def resize_image(data_dict, size=IMG_SIZE):
@@ -131,18 +133,19 @@ def main():
     train_iter = import_dataset(resize_image(data))# .prefetch(10).batch(10)
     # train_iter = train_set.make_one_shot_iterator()
     inputs, outputs, layers = build_net()
-    optim = tf.train.GradientDescentOptimizer(learning_rate=0.0004)
+    optim = tf.train.AdamOptimizer(learning_rate=0.0004)
+    train_op = optim.minimize(outputs['loss'])
     print(tf.local_variables())
     print('=== start training')
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
         i = 0
-        while True:
+        for _ in range(200):
             i += 1
             try:
                 feature, label = next(train_iter)
-                sess.run(optim.minimize(outputs['loss']),
+                sess.run(train_op,
                          feed_dict={
                              inputs['feature']: feature,
                              inputs['label']: label
